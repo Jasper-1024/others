@@ -1,16 +1,23 @@
 #!/bin/bash
+# This script initializes the zsh shell and sets it as the default shell.
 
-# 安装 zsh | $1 是传递进入的 sudo 密码
-echo "$1" | sudo -S  apt update
-echo "$1" | sudo -S  apt install -y zsh
+set -e
 
-# 安装 Oh My Zsh
-sh -c "$(curl -fsSL https://raw.github.com/ohmyzsh/ohmyzsh/master/tools/install.sh)"
+# Check if zsh is installed.
+if ! grep -q "$(which zsh)" /etc/shells; then
+	echo "zsh is not installed."
+	# 安装 zsh
+	echo "$1" | sudo -S apt update
+	echo "$1" | sudo -S apt install -y zsh git
+fi
+
+# 安装 Oh My Zsh | 静默
+sh -c "$(curl -fsSL https://raw.github.com/ohmyzsh/ohmyzsh/master/tools/install.sh)" "" --unattended
 
 # 更改主题
 sed -i 's/ZSH_THEME="robbyrussell"/ZSH_THEME="ys"/g' ~/.zshrc
 
-sed -i '/ZSH_THEME=/a\
+sed -i '/ZSH_THEME="ys"/a\
 export LS_COLORS=${LS_COLORS}:\x27di=01;37;44\x27
 ' ~/.zshrc
 
@@ -18,14 +25,10 @@ export LS_COLORS=${LS_COLORS}:\x27di=01;37;44\x27
 git clone https://github.com/zsh-users/zsh-autosuggestions ${ZSH_CUSTOM:-~/.oh-my-zsh/custom}/plugins/zsh-autosuggestions
 git clone https://github.com/zsh-users/zsh-syntax-highlighting.git ${ZSH_CUSTOM:-~/.oh-my-zsh/custom}/plugins/zsh-syntax-highlighting
 
-# 添加插件 docker 和 docker-compose
-sed -i 's/plugins=(git)/plugins=(git docker docker-compose)/g' ~/.zshrc
-
 # 启用插件 z extract git docker docker-compose zsh-autosuggestions zsh-syntax-highlighting
-sed -i 's/plugins=(git)/plugins=(git z extract docker docker-compose zsh-autosuggestions zsh-syntax-highlighting)/g' ~/.zshrc
-
+sed -i '0,/.*plugins=(git).*/s//plugins=(git z extract docker docker-compose zsh-autosuggestions zsh-syntax-highlighting)/' ~/.zshrc
 # 添加 zsh-completions 补全
-sed -i '/^plugins=(/a\
+sed -i '/^plugins=(git/a\
 fpath+=\${ZSH_CUSTOM:-"\$ZSH/custom"}/plugins/zsh-completions/src
 ' ~/.zshrc
 
@@ -51,10 +54,13 @@ EOF
 echo 'source ~/.oh-my-zsh/plugins/incr/incr*.zsh' >>~/.zshrc
 
 # 安装 incr 脚本
-mkdir -p ~/.oh-my-zsh/plugins/incr && cat <<-'EOF' > ~/.oh-my-zsh/plugins/incr/incr-0.2.zsh
-# Incremental completion for zsh
-# by y.fujii <y-fujii at mimosa-pudica.net>, public domain
+# mkdir -p ~/.oh-my-zsh/plugins/incr && tee ~/.oh-my-zsh/plugins/incr/incr-0.2.zsh <<'EOF'
+# # Incremental completion for zsh
+# # by y.fujii <y-fujii at mimosa-pudica.net>, public domain
 
+mkdir -p ~/.oh-my-zsh/plugins/incr && cat <<'EOF' >~/.oh-my-zsh/plugins/incr/incr-0.2.zsh
+# Incremental completion for zsh
+# by y.fujii <y-fujii at mimosa-pudica.net>, public domain:
 
 autoload -U compinit
 zle -N self-insert self-insert-incr
@@ -195,3 +201,9 @@ function expand-or-complete-prefix-incr
 	fi
 }
 EOF
+
+# 更改默认 shell
+echo "$1" | sudo -S chsh -s $(which zsh) $USER
+
+echo 'zsh init complete!'
+
