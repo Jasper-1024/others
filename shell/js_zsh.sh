@@ -1,14 +1,52 @@
 #!/bin/bash
 # This script initializes the zsh shell and sets it as the default shell.
 
-set -e
+# set -e
+# set -x
+
+# Detect the OS
+OS=$(uname -s)
+
+if [ "${OS}" == "Linux" ]; then
+    if [ -f /etc/os-release ]; then
+        . /etc/os-release
+        OS=$ID
+    fi
+fi
+
+# function to install packages
+install_packages() {
+	local password=$1
+	shift
+
+	if [ "${OS}" == "ubuntu" ] || [ "${OS}" == "debian" ]; then
+		if [ -n "${password}" ]; then
+			echo "${password}" | sudo -S apt update
+			echo "${password}" | sudo -S apt install -y "$@"
+		else
+			sudo apt update
+			sudo apt install -y "$@"
+		fi
+	elif [ "${OS}" == "centos" ]; then
+		if [ -n "${password}" ]; then
+			echo "${password}" | sudo -S yum update
+			echo "${password}" | sudo -S yum install -y "$@"
+		else
+			sudo yum update
+			sudo yum install -y "$@"
+		fi
+	fi
+}
+
+# Now you can use the install_packages function in the rest of your script
+install_packages git curl
+
+install_packages  zsh # 安装 zsh
 
 # Check if zsh is installed.
 if ! grep -q "$(which zsh)" /etc/shells; then
-	echo "zsh is not installed."
-	# 安装 zsh
-	echo "$1" | sudo -S apt update
-	echo "$1" | sudo -S apt install -y zsh git
+    echo "zsh is not installed, please check the installation process..."
+	exit 1
 fi
 
 # 安装 Oh My Zsh | 静默
@@ -24,12 +62,14 @@ export LS_COLORS=${LS_COLORS}:\x27di=01;37;44\x27
 # 安装命令补全插件
 git clone https://github.com/zsh-users/zsh-autosuggestions ${ZSH_CUSTOM:-~/.oh-my-zsh/custom}/plugins/zsh-autosuggestions
 git clone https://github.com/zsh-users/zsh-syntax-highlighting.git ${ZSH_CUSTOM:-~/.oh-my-zsh/custom}/plugins/zsh-syntax-highlighting
+# zsh-history
+git clone https://github.com/zsh-users/zsh-history-substring-search ${ZSH_CUSTOM:-~/.oh-my-zsh/custom}/plugins/zsh-history-substring-search
 
-# 启用插件 z extract git docker docker-compose zsh-autosuggestions zsh-syntax-highlighting
-sed -i '0,/.*plugins=(git).*/s//plugins=(git z extract docker docker-compose zsh-autosuggestions zsh-syntax-highlighting)/' ~/.zshrc
+# 启用插件 z extract sudo cp git docker docker-compose kubectl zsh-autosuggestions zsh-syntax-highlighting zsh-history-substring-search
+sed -i '0,/.*plugins=(git).*/s//plugins=(git z sudo cp extract docker docker-compose kubectl colored-man-pages command-not-found zsh-autosuggestions zsh-syntax-highlighting zsh-history-substring-search)/' ~/.zshrc
 # 添加 zsh-completions 补全
 sed -i '/^plugins=(git/a\
-fpath+=\${ZSH_CUSTOM:-"\$ZSH/custom"}/plugins/zsh-completions/src
+fpath+=\${ZSH_CUSTOM:-\${ZSH:-~/.oh-my-zsh}/custom}/plugins/zsh-completions/src
 ' ~/.zshrc
 
 # 配置 zsh-autosuggestions 插件
@@ -206,4 +246,5 @@ EOF
 echo "$1" | sudo -S chsh -s $(which zsh) $USER
 
 echo 'zsh init complete!'
+
 
