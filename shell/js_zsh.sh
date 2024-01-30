@@ -64,6 +64,8 @@ git clone https://github.com/zsh-users/zsh-autosuggestions ${ZSH_CUSTOM:-~/.oh-m
 git clone https://github.com/zsh-users/zsh-syntax-highlighting.git ${ZSH_CUSTOM:-~/.oh-my-zsh/custom}/plugins/zsh-syntax-highlighting
 # zsh-history
 git clone https://github.com/zsh-users/zsh-history-substring-search ${ZSH_CUSTOM:-~/.oh-my-zsh/custom}/plugins/zsh-history-substring-search
+# zsh-completions 
+git clone https://github.com/zsh-users/zsh-completions ${ZSH_CUSTOM:-${ZSH:-~/.oh-my-zsh}/custom}/plugins/zsh-completions
 
 # 启用插件 z extract sudo cp git docker docker-compose kubectl zsh-autosuggestions zsh-syntax-highlighting zsh-history-substring-search
 sed -i '0,/.*plugins=(git).*/s//plugins=(git z sudo cp extract docker docker-compose kubectl colored-man-pages command-not-found zsh-autosuggestions zsh-syntax-highlighting zsh-history-substring-search)/' ~/.zshrc
