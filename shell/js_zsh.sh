@@ -1,70 +1,136 @@
 #!/bin/bash
 # This script initializes the zsh shell and sets it as the default shell.
 
-# set -e
-# set -x
+set -e # Exit immediately if a command exits with a non-zero status.
+set -x
 
 # Detect the OS
-OS=$(uname -s)
-
-if [ "${OS}" == "Linux" ]; then
-    if [ -f /etc/os-release ]; then
-        . /etc/os-release
-        OS=$ID
-    fi
+OS=""
+if [ -f /etc/os-release ]; then
+	. /etc/os-release
+	OS=$ID
+elif [ -f /etc/redhat-release ]; then
+	OS="rhel"
 fi
 
-# function to install packages
-install_packages() {
-	local password=$1
-	shift
-
-	if [ "${OS}" == "ubuntu" ] || [ "${OS}" == "debian" ]; then
-		if [ -n "${password}" ]; then
-			echo "${password}" | sudo -S apt update
-			echo "${password}" | sudo -S apt install -y "$@"
-		else
-			sudo apt update
-			sudo apt install -y "$@"
-		fi
-	elif [ "${OS}" == "centos" ]; then
-		if [ -n "${password}" ]; then
-			echo "${password}" | sudo -S yum update
-			echo "${password}" | sudo -S yum install -y "$@"
-		else
-			sudo yum update
-			sudo yum install -y "$@"
-		fi
+# Function to check sudo access
+check_sudo() {
+	if sudo -n true 2>/dev/null; then
+		echo "Sudo access available without password."
+		return 0
+	else
+		return 1
 	fi
 }
 
-# Now you can use the install_packages function in the rest of your script
-install_packages git curl
+# Function to install packages
+install_packages() {
+	local use_sudo=""
+	if [ "$EUID" -ne 0 ]; then
+		use_sudo="sudo"
+	fi
 
-install_packages  zsh # 安装 zsh
+	case $OS in
+	debian | ubuntu)
+		$use_sudo apt update
+		$use_sudo apt install -y "$@"
+		;;
+	rocky | centos | rhel)
+		$use_sudo yum update -y
+		$use_sudo yum install -y "$@"
+		;;
+	*)
+		echo "Unsupported operating system: $OS"
+		exit 1
+		;;
+	esac
+}
 
-# Check if zsh is installed.
-if ! grep -q "$(which zsh)" /etc/shells; then
-    echo "zsh is not installed, please check the installation process..."
-	exit 1
+# 检查是否以 root 身份运行
+if [ "$EUID" -eq 0 ]; then
+	echo "Running as root. Proceeding without sudo."
+else
+	# 检查是否提供了 sudo 密码
+	if [ -z "$1" ]; then
+		echo "Sudo password not provided. Exiting."
+		exit 1
+	else
+		sudo_password="$1"
+		if echo "$sudo_password" | sudo -S true 2>/dev/null; then
+			echo "Sudo access granted."
+			export SUDO_ASKPASS="$(which ssh-askpass)"
+			export SUDO_PASSWORD="$sudo_password"
+		else
+			echo "Invalid sudo password or no sudo privileges. Exiting."
+			exit 1
+		fi
+	fi
 fi
 
-# 安装 Oh My Zsh | 静默
-sh -c "$(curl -fsSL https://raw.github.com/ohmyzsh/ohmyzsh/master/tools/install.sh)" "" --unattended
+# Verify installations
+for pkg in git curl; do
+	if ! command -v $pkg &>/dev/null; then
+		echo "$pkg is not installed."
+		install_packages $pkg
+	fi
+done
 
-# 更改主题
-sed -i 's/ZSH_THEME="robbyrussell"/ZSH_THEME="ys"/g' ~/.zshrc
+# Check if zsh is installed.
+if ! command -v zsh &>/dev/null; then
+	echo "zsh is not installed. Installing zsh..."
+	install_packages zsh
+fi
 
-sed -i '/ZSH_THEME="ys"/a\
+echo "git, curl, and zsh have been successfully installed."
+
+# 检查 Oh My Zsh 是否已经安装
+if [ -d "$HOME/.oh-my-zsh" ]; then
+	echo "Oh My Zsh is already installed."
+else
+	# 安装 Oh My Zsh | 静默
+	sh -c "$(curl -fsSL https://raw.github.com/ohmyzsh/ohmyzsh/master/tools/install.sh)" "" --unattended
+	echo "Oh My Zsh has been successfully installed."
+fi
+
+if [ -d ${ZSH_CUSTOM:-$HOME/.oh-my-zsh/custom}/themes/powerlevel10k ]; then
+	echo "Powerlevel10k theme is already installed."
+else
+	git clone --depth=1 https://github.com/romkatv/powerlevel10k.git ${ZSH_CUSTOM:-$HOME/.oh-my-zsh/custom}/themes/powerlevel10k
+fi
+
+# 更改主题 powerlevel10k
+sed -i 's/ZSH_THEME="robbyrussell"/ZSH_THEME="powerlevel10k\/powerlevel10k"/g' ~/.zshrc
+
+# 加载 p10k 配置 | not ready
+# if [ -f ~/.p10k.zsh ]; then
+# 	rm -f ~/.p10k.zsh
+# fi
+# curl -fsSL https://raw.githubusercontent.com/Jasper-1024/others/refs/heads/master/shell/.p10k.zsh >~/.p10k.zsh
+
+# 默认颜色
+# 默认颜色
+if ! grep -q 'export LS_COLORS=${LS_COLORS}:\x27di=01;37;44\x27' ~/.zshrc; then
+	sed -i '/ZSH_THEME="powerlevel10k\/powerlevel10k"/a\
 export LS_COLORS=${LS_COLORS}:\x27di=01;37;44\x27
 ' ~/.zshrc
+fi
+
+# if custom/plugins 已经存在
+plugins=("zsh-autosuggestions" "zsh-syntax-highlighting" "zsh-history-substring-search" "zsh-completions")
+for plugin in "${plugins[@]}"; do
+	plugin_path="$HOME/.oh-my-zsh/custom/plugins/$plugin"
+	if [ -d "$plugin_path" ]; then
+		echo "Removing existing $plugin plugin"
+		rm -rf "$plugin_path"
+	fi
+done
 
 # 安装命令补全插件
 git clone https://github.com/zsh-users/zsh-autosuggestions ${ZSH_CUSTOM:-~/.oh-my-zsh/custom}/plugins/zsh-autosuggestions
 git clone https://github.com/zsh-users/zsh-syntax-highlighting.git ${ZSH_CUSTOM:-~/.oh-my-zsh/custom}/plugins/zsh-syntax-highlighting
 # zsh-history
 git clone https://github.com/zsh-users/zsh-history-substring-search ${ZSH_CUSTOM:-~/.oh-my-zsh/custom}/plugins/zsh-history-substring-search
-# zsh-completions 
+# zsh-completions
 git clone https://github.com/zsh-users/zsh-completions ${ZSH_CUSTOM:-${ZSH:-~/.oh-my-zsh}/custom}/plugins/zsh-completions
 
 # 启用插件 z extract sudo cp git docker docker-compose kubectl zsh-autosuggestions zsh-syntax-highlighting zsh-history-substring-search
@@ -244,9 +310,39 @@ function expand-or-complete-prefix-incr
 }
 EOF
 
-# 更改默认 shell
-echo "$1" | sudo -S chsh -s $(which zsh) $USER
+echo "$SUDO_PASSWORD" | sudo -S chsh -s $(which zsh) $USER
 
-echo 'zsh init complete!'
+# # 更改默认 shell
+# change_default_shell_to_zsh() {
+# 	local zsh_path=$(which zsh)
+# 	if [ -z "$zsh_path" ]; then
+# 		echo "Error: zsh is not installed or not in PATH."
+# 		return 1
+# 	fi
 
+# 	# Check if zsh is already in /etc/shells
+# 	if ! grep -q "^$zsh_path$" /etc/shells; then
+# 		echo "Adding $zsh_path to /etc/shells..."
+# 		echo "$zsh_path" | sudo tee -a /etc/shells >/dev/null
+# 	fi
 
+# 	# Change the default shell
+# 	if [ "$SHELL" != "$zsh_path" ]; then
+# 		echo "Changing default shell to zsh..."
+# 		if chsh -s "$zsh_path"; then
+# 			echo "Default shell changed to zsh successfully."
+# 			export SHELL="$zsh_path"
+# 		else
+# 			echo "Failed to change default shell. Please run 'chsh -s $(which zsh)' manually."
+# 			return 1
+# 		fi
+# 	else
+# 		echo "zsh is already the default shell."
+# 	fi
+
+# 	# Remind user to log out and log back in
+# 	echo "Please log out and log back in for the changes to take effect."
+# }
+
+# # Call the function to change the default shell
+# change_default_shell_to_zsh
